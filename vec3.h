@@ -17,7 +17,7 @@ typedef union {
     float e[3];
 } vec3;
 
-__device__ vec3 make_vec3(float x, float y, float z) {
+__device__ __host__ vec3 make_vec3(float x, float y, float z) {
     vec3 v;
     v.x = x;
     v.y = y;

@@ -1,44 +1,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <float.h>
 
 #include <cuda.h>
 #include <cuda_runtime.h>
 
 #include "vec3.h"
 #include "ray.h"
+#include "hitable_utils.h"
 
 #define NX 200
 #define NY 100
 
-__device__ float hit_sphere(const vec3 &center, float radius, const ray &r) {
-    vec3 oc = minus(r.origin, center);
-    float a = dot(r.direction, r.direction);
-    float b = 2.0 * dot(oc, r.direction);
-    float c = dot(oc, oc) - radius*radius;
-    float discriminant = b*b - 4*a*c;
-    if (discriminant < 0) {
-        return -1.0;
-    } else {
-        return (-b - sqrt(discriminant)) / (2.0*a);
+__device__ vec3 color(const ray &r, hitable *world) {
+    hit_record rec;
+    if (hit(world, r, 0.001, FLT_MAX, rec)) {
+        return times(.5, make_vec3(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1));
+    }
+    else {
+        vec3 unit_direction = unit_vector(r.direction);
+        float t = 0.5 * unit_direction.y + 1.0;
+        return plus(
+            times(1.0-t, make_vec3(1.0, 1.0, 1.0)),
+            times(    t, make_vec3(0.5, 0.7, 1.0))
+        );
     }
 }
 
-__device__ vec3 color(const ray &r) {
-    float t = hit_sphere(make_vec3(0,0,-1), 0.5, r);
-    if (t > 0.0) {
-        vec3 N = unit_vector(minus(point_at_parameter(r, t), make_vec3(0,0,-1)));
-        return times(0.5, make_vec3(N.x+1, N.y+1, N.z+1));
-    }
-    vec3 unit_direction = unit_vector(r.direction);
-    t = 0.5 * unit_direction.y + 1.0;
-    return plus(
-        times(1.0-t, make_vec3(1.0, 1.0, 1.0)),
-        times(    t, make_vec3(0.5, 0.7, 1.0))
-    );
-}
-
-__global__ void kernel(int nx, int ny, unsigned char *out) {
+__global__ void kernel(int nx, int ny, hitable *world, unsigned char *out) {
     vec3 lower_left_corner = make_vec3(-2.0, -1.0, -1.0);
     vec3 horizontal = make_vec3(4.0, 0.0, 0.0);
     vec3 vertical = make_vec3(0.0, 2.0, 0.0);
@@ -52,7 +42,7 @@ __global__ void kernel(int nx, int ny, unsigned char *out) {
     float v = float(j) / float(ny);
 
     ray r = make_ray(origin, plus(lower_left_corner, plus(times(u, horizontal), times(v, vertical))));
-    vec3 col = color(r);
+    vec3 col = color(r, world);
 
     out[n*3+0] = int(255.99*col.r);
     out[n*3+1] = int(255.99*col.g);
@@ -63,12 +53,17 @@ int main(void) {
     size_t BUFFER_SIZE = sizeof(unsigned char)*NX*NY*3;
 
     printf("P3\n%d %d\n255\n", NX, NY);
+
+    hitable *world = make_shared_hitable_list(2);
+    hitable **list = ((hitable_list*)world->v)->list;
+    list[0] = make_shared_sphere(make_vec3(0,0,-1), 0.5);
+    list[1] = make_shared_sphere(make_vec3(0,-100.5,-1), 100);
     
     unsigned char *out = (unsigned char*)malloc(BUFFER_SIZE); // host ouput
     unsigned char *d_out; // device output
     cudaMalloc(&d_out, BUFFER_SIZE);
 
-    kernel<<<NX*NY,1>>>(NX, NY, d_out);
+    kernel<<<NX*NY,1>>>(NX, NY, world, d_out);
 
     cudaMemcpy(out, d_out, BUFFER_SIZE, cudaMemcpyDeviceToHost);
 
@@ -78,6 +73,8 @@ int main(void) {
 
     cudaFree(d_out);
     free(out);
+
+    clean_up_hitable(world);
 
     return 0;
 }
