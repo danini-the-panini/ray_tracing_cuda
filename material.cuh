@@ -49,8 +49,8 @@ __host__ material *make_shared_metal(const vec3 &albedo, float fuzz) {
     material *m = make_shared_material();
 
     m->type = METAL;
-    m->albedo - albedo;
-    m->fuzz = fuzz;
+    m->albedo = albedo;
+    m->fuzz = fuzz > 1 ? 1 : fuzz;
 
     return m;
 }

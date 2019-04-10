@@ -14,9 +14,9 @@
 
 #include "sphere_list.cuh"
 
-#define NX 200
-#define NY 100
-#define NS 2
+#define NX 1024
+#define NY 512
+#define NS 10
 #define MAX_DEPTH 24
 
 __device__ vec3 sky(const ray &r) {
@@ -27,14 +27,16 @@ __device__ vec3 sky(const ray &r) {
 
 __device__ vec3 color(curandState &local_state, const ray &r, sphere_list *world) {
     hit_record rec;
-    ray scattered = r;
+    ray next_ray = r;
+    ray scattered;
     vec3 attenuation[MAX_DEPTH];
     int num_hits = 0;
-    vec3 col = vec3(0, 0, 0);
+    vec3 col = vec3(0.0, 0.0, 0.0);
 
     for (int i = 0; i < MAX_DEPTH; i++) {
-        if (hit(world, r, 0.001, FLT_MAX, rec)) {
-            if (scatter(local_state, rec.mat_ptr, r, rec, attenuation[i], scattered)) {
+        if (hit(world, next_ray, 0.001, FLT_MAX, rec)) {
+            if (scatter(local_state, rec.mat_ptr, next_ray, rec, attenuation[i], scattered)) {
+                next_ray = scattered;
                 num_hits++;
             } else {
                 break;
@@ -91,10 +93,11 @@ __global__ void kernel(curandState* global_state, int nx, int ny, sphere_list *w
     col = BlockReduce(temp_storage).Reduce(col, add_vec3);
 #endif
 
+    col = vec3(sqrt(col.r()), sqrt(col.g()), sqrt(col.b()));
     if (threadIdx.x == 0) {
-        out[n*3+0] = int(255.99*sqrt(col.r()));
-        out[n*3+1] = int(255.99*sqrt(col.g()));
-        out[n*3+2] = int(255.99*sqrt(col.b()));
+        out[n*3+0] = int(255.99*col.r());
+        out[n*3+1] = int(255.99*col.g());
+        out[n*3+2] = int(255.99*col.b());
     }
 }
 
@@ -108,13 +111,13 @@ int main(void) {
 
     printf("P3\n%d %d\n255\n", NX, NY);
 
-    sphere_list *world = make_shared_sphere_list(2);
+    sphere_list *world = make_shared_sphere_list(5);
     sphere **list = world->list;
     list[0] = make_shared_sphere(vec3(0,0,-1), 0.5, make_shared_lambertian(vec3(0.8, 0.3, 0.3)));
     list[1] = make_shared_sphere(vec3(0,-100.5,-1), 100, make_shared_lambertian(vec3(0.8, 0.6, 0.2)));
-    // list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, make_shared_metal(vec3(0.8, 0.6, 0.2), 0.8));
-    // list[3] = make_shared_sphere(vec3(-1,0,-1), 0.5, make_shared_dielectric(1.5));
-    // list[4] = make_shared_sphere(vec3(-1,0,-1), -0.45, make_shared_dielectric(1.5));
+    list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, make_shared_metal(vec3(0.8, 0.6, 0.2), 0.1));
+    list[3] = make_shared_sphere(vec3(-1,0,-1), 0.5, make_shared_dielectric(1.5));
+    list[4] = make_shared_sphere(vec3(-1,0,-1), -0.45, make_shared_dielectric(1.5));
     
     unsigned char *out = (unsigned char*)malloc(BUFFER_SIZE); // host ouput
     unsigned char *d_out; // device output
