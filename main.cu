@@ -18,17 +18,25 @@
 #define NX 200
 #define NY 100
 #define NS 100
+#define MAX_DEPTH 2
 
-__global__ void setup_kernel(curandState * state, unsigned long seed)
-{
-    int id = threadIdx.x + blockIdx.x * blockDim.x;
-    curand_init((seed<<20)+id, 0, 0, &state[id]);
+__device__ vec3 random_in_unit_sphere(curandState &local_state) {
+    return make_vec3(
+        curand_normal(&local_state),
+        curand_normal(&local_state),
+        curand_normal(&local_state)
+    );
 }
 
-__device__ vec3 color(const ray &r, hitable *world) {
+__device__ vec3 color(curandState &local_state, const ray &r, hitable *world, int depth) {
     hit_record rec;
     if (hit(world, r, 0.001, FLT_MAX, rec)) {
-        return times(.5, make_vec3(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1));
+        vec3 target = plus(plus(rec.p, rec.normal), random_in_unit_sphere(local_state));
+        if (depth < MAX_DEPTH) {
+            return times(0.5, color(local_state, make_ray(rec.p, minus(target, rec.p)), world, depth+1));
+        } else {
+            return make_vec3(0,0,0);
+        }
     }
     else {
         vec3 unit_direction = unit_vector(r.direction);
@@ -38,6 +46,12 @@ __device__ vec3 color(const ray &r, hitable *world) {
             times(    t, make_vec3(0.5, 0.7, 1.0))
         );
     }
+}
+
+__global__ void setup_kernel(curandState * state, unsigned long seed)
+{
+    int id = threadIdx.x + blockIdx.x * blockDim.x;
+    curand_init((seed<<20)+id, 0, 0, &state[id]);
 }
 
 __global__ void kernel(curandState* global_state, int nx, int ny, hitable *world, unsigned char *out) {
@@ -60,7 +74,7 @@ __global__ void kernel(curandState* global_state, int nx, int ny, hitable *world
     float v = (float(j) + curand_uniform(&local_state)) / float(ny);
 
     ray r = make_ray(origin, plus(lower_left_corner, plus(times(u, horizontal), times(v, vertical))));
-    vec3 col = color(r, world);
+    vec3 col = color(local_state, r, world, 0);
     div(col, float(NS));
 
     vec3 final_col = BlockReduce(temp_storage).Reduce(col, plus);
