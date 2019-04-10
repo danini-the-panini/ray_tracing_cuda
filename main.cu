@@ -12,11 +12,14 @@
 
 #include <cub/cub.cuh>
 
+#define PI 3.14159265358979323846
+
 #include "sphere_list.cuh"
+#include "camera.cuh"
 
 #define NX 1024
 #define NY 512
-#define NS 10
+#define NS 100
 #define MAX_DEPTH 24
 
 __device__ vec3 sky(const ray &r) {
@@ -64,7 +67,7 @@ __device__ vec3 add_vec3(const vec3 &v1, const vec3 &v2) {
     return v1 + v2;
 }
 
-__global__ void kernel(curandState* global_state, int nx, int ny, sphere_list *world, unsigned char *out) {
+__global__ void kernel(curandState* global_state, int nx, int ny, sphere_list *world, const camera &cam, unsigned char *out) {
     int id = threadIdx.x + blockIdx.x * blockDim.x;
     curandState local_state = global_state[id];
 
@@ -85,7 +88,7 @@ __global__ void kernel(curandState* global_state, int nx, int ny, sphere_list *w
     float u = (float(i) + curand_uniform(&local_state)) / float(nx);
     float v = (float(j) + curand_uniform(&local_state)) / float(ny);
 
-    ray r = ray(origin, lower_left_corner + u*horizontal + v*vertical);
+    ray r = cam.get_ray(u, v);
     vec3 col = color(local_state, r, world);
     col/=float(NS);
 
@@ -111,19 +114,24 @@ int main(void) {
 
     printf("P3\n%d %d\n255\n", NX, NY);
 
-    sphere_list *world = make_shared_sphere_list(5);
+    sphere_list *world = make_shared_sphere_list(2);
     sphere **list = world->list;
-    list[0] = make_shared_sphere(vec3(0,0,-1), 0.5, make_shared_lambertian(vec3(0.8, 0.3, 0.3)));
-    list[1] = make_shared_sphere(vec3(0,-100.5,-1), 100, make_shared_lambertian(vec3(0.8, 0.6, 0.2)));
-    list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, make_shared_metal(vec3(0.8, 0.6, 0.2), 0.1));
-    list[3] = make_shared_sphere(vec3(-1,0,-1), 0.5, make_shared_dielectric(1.5));
-    list[4] = make_shared_sphere(vec3(-1,0,-1), -0.45, make_shared_dielectric(1.5));
+    float R = cos(PI/4);
+    list[0] = make_shared_sphere(vec3(-R,0,-1), R, make_shared_lambertian(vec3(0,0,1)));
+    list[1] = make_shared_sphere(vec3( R,0,-1), R, make_shared_lambertian(vec3(1,0,0)));
+    // list[0] = make_shared_sphere(vec3(0,0,-1), 0.5, make_shared_lambertian(vec3(0.1, 0.2, 0.5)));
+    // list[1] = make_shared_sphere(vec3(0,-100.5,-1), 100, make_shared_lambertian(vec3(0.8, 0.6, 0.2)));
+    // list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, make_shared_metal(vec3(0.8, 0.6, 0.2), 0.1));
+    // list[3] = make_shared_sphere(vec3(-1,0,-1), 0.5, make_shared_dielectric(1.5));
+    // list[4] = make_shared_sphere(vec3(-1,0,-1), -0.45, make_shared_dielectric(1.5));
     
     unsigned char *out = (unsigned char*)malloc(BUFFER_SIZE); // host ouput
     unsigned char *d_out; // device output
     cudaMalloc(&d_out, BUFFER_SIZE);
 
-    kernel<<<NX*NY,NS>>>(device_states, NX, NY, world, d_out);
+    camera *cam = new camera(90, float(NX)/float(NY));
+
+    kernel<<<NX*NY,NS>>>(device_states, NX, NY, world, *cam, d_out);
 
     cudaMemcpy(out, d_out, BUFFER_SIZE, cudaMemcpyDeviceToHost);
 
@@ -135,6 +143,7 @@ int main(void) {
     free(out);
 
     clean_up_sphere_list(world);
+    delete cam;
 
     return 0;
 }
