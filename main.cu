@@ -77,9 +77,10 @@ __global__ void kernel(curandState* global_state, int nx, int ny, hitable *world
     vec3 col = color(local_state, r, world, 0);
     div(col, float(NS));
 
-    vec3 final_col = BlockReduce(temp_storage).Reduce(col, plus);
+    vec3 total_col = BlockReduce(temp_storage).Reduce(col, plus);
 
     if (threadIdx.x == 0) {
+        vec3 final_col = make_vec3(sqrt(total_col.x), sqrt(total_col.y), sqrt(total_col.z));
         out[n*3+0] = int(255.99*final_col.r);
         out[n*3+1] = int(255.99*final_col.g);
         out[n*3+2] = int(255.99*final_col.b);
