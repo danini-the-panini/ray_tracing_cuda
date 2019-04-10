@@ -114,22 +114,20 @@ int main(void) {
 
     printf("P3\n%d %d\n255\n", NX, NY);
 
-    sphere_list *world = make_shared_sphere_list(2);
+    sphere_list *world = make_shared_sphere_list(5);
     sphere **list = world->list;
     float R = cos(PI/4);
-    list[0] = make_shared_sphere(vec3(-R,0,-1), R, make_shared_lambertian(vec3(0,0,1)));
-    list[1] = make_shared_sphere(vec3( R,0,-1), R, make_shared_lambertian(vec3(1,0,0)));
-    // list[0] = make_shared_sphere(vec3(0,0,-1), 0.5, make_shared_lambertian(vec3(0.1, 0.2, 0.5)));
-    // list[1] = make_shared_sphere(vec3(0,-100.5,-1), 100, make_shared_lambertian(vec3(0.8, 0.6, 0.2)));
-    // list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, make_shared_metal(vec3(0.8, 0.6, 0.2), 0.1));
-    // list[3] = make_shared_sphere(vec3(-1,0,-1), 0.5, make_shared_dielectric(1.5));
-    // list[4] = make_shared_sphere(vec3(-1,0,-1), -0.45, make_shared_dielectric(1.5));
+    list[0] = make_shared_sphere(vec3(0,0,-1), 0.5, make_shared_lambertian(vec3(0.1, 0.2, 0.5)));
+    list[1] = make_shared_sphere(vec3(0,-100.5,-1), 100, make_shared_lambertian(vec3(0.8, 0.6, 0.2)));
+    list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, make_shared_metal(vec3(0.8, 0.6, 0.2), 0.1));
+    list[3] = make_shared_sphere(vec3(-1,0,-1), 0.5, make_shared_dielectric(1.5));
+    list[4] = make_shared_sphere(vec3(-1,0,-1), -0.45, make_shared_dielectric(1.5));
     
     unsigned char *out = (unsigned char*)malloc(BUFFER_SIZE); // host ouput
     unsigned char *d_out; // device output
     cudaMalloc(&d_out, BUFFER_SIZE);
 
-    camera *cam = new camera(90, float(NX)/float(NY));
+    camera *cam = new camera(vec3(-2,2,1), vec3(0,0,-1), vec3(0,1,0), 30, float(NX)/float(NY));
 
     kernel<<<NX*NY,NS>>>(device_states, NX, NY, world, *cam, d_out);
 
