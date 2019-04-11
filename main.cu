@@ -116,11 +116,11 @@ int main(void) {
 
     sphere_list *world = make_shared_sphere_list(5);
     sphere **list = world->list;
-    list[0] = make_shared_sphere(vec3(0,0,-1), 0.5, new material(LAMBERTIAN, vec3(0.1, 0.2, 0.5)));
-    list[1] = make_shared_sphere(vec3(0,-100.5,-1), 100, new material(LAMBERTIAN, vec3(0.8, 0.6, 0.2)));
-    list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, new material(METAL, vec3(0.8, 0.6, 0.2), 0.1));
-    list[3] = make_shared_sphere(vec3(-1,0,-1), 0.5, new material(DIELECTRIC, 1.5));
-    list[4] = make_shared_sphere(vec3(-1,0,-1), -0.45, new material(DIELECTRIC, 1.5));
+    list[0] = new sphere(vec3(0,0,-1), 0.5, new material(LAMBERTIAN, vec3(0.1, 0.2, 0.5)));
+    list[1] = new sphere(vec3(0,-100.5,-1), 100, new material(LAMBERTIAN, vec3(0.8, 0.6, 0.2)));
+    list[2] = new sphere(vec3(1,0,-1), 0.5, new material(METAL, vec3(0.8, 0.6, 0.2), 0.1));
+    list[3] = new sphere(vec3(-1,0,-1), 0.5, new material(DIELECTRIC, 1.5));
+    list[4] = new sphere(vec3(-1,0,-1), -0.45, new material(DIELECTRIC, 1.5));
     
     unsigned char *out = (unsigned char*)malloc(BUFFER_SIZE); // host ouput
     unsigned char *d_out; // device output

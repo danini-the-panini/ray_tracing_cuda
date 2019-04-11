@@ -13,7 +13,7 @@ __device__ bool hit(const sphere_list *l, const ray &r, float t_min, float t_max
   bool hit_anything = false;
   double closest_so_far = t_max;
   for (int i = 0; i < l->size; i++) {
-    if (hit(l->list[i], r, t_min, closest_so_far, temp_rec)) {
+    if (l->list[i]->hit(r, t_min, closest_so_far, temp_rec)) {
       hit_anything = true;
       closest_so_far = temp_rec.t;
       rec = temp_rec;
@@ -36,7 +36,7 @@ __host__ sphere_list *make_shared_sphere_list(int size) {
 
 __host__ void clean_up_sphere_list(sphere_list *l) {
   for (int i = 0; i < l->size; i++) {
-    clean_up_sphere(l->list[i]);
+    delete l->list[i];
   }
   cudaFree(l->list);
   cudaFree(l);
