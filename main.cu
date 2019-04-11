@@ -16,11 +16,14 @@
 
 #include "sphere_list.cuh"
 #include "camera.cuh"
+#include "drand48.h"
 
-#define NX 1024
-#define NY 512
+#define NX 1200
+#define NY 800
 #define NS 100
-#define MAX_DEPTH 24
+#define MAX_DEPTH 50
+
+// #define NO_OUTPUT
 
 __device__ vec3 sky(const ray &r) {
     vec3 unit_direction = unit_vector(r.direction());
@@ -104,6 +107,37 @@ __global__ void kernel(curandState* global_state, int nx, int ny, sphere_list *w
     }
 }
 
+__host__ sphere_list *random_scene() {
+    int n = 485;
+    sphere_list *world = new sphere_list(n);
+    world->list[0] =  new sphere(vec3(0,-1000,0), 1000, new material(LAMBERTIAN, vec3(0.5, 0.5, 0.5)));
+    int i = 1;
+    for (int a = -11; a < 11; a++) {
+        for (int b = -11; b < 11; b++) {
+            float choose_mat = drand48();
+            vec3 center(a+0.9*drand48(),0.2,b+0.9*drand48()); 
+            if ((center-vec3(4,0.2,0)).length() > 0.9) { 
+                if (choose_mat < 0.8) {  // diffuse
+                    world->list[i++] = new sphere(center, 0.2, new material(LAMBERTIAN, vec3(drand48()*drand48(), drand48()*drand48(), drand48()*drand48())));
+                }
+                else if (choose_mat < 0.95) { // metal
+                    world->list[i++] = new sphere(center, 0.2,
+                            new material(METAL, vec3(0.5*(1 + drand48()), 0.5*(1 + drand48()), 0.5*(1 + drand48())),  0.5*drand48()));
+                }
+                else {  // glass
+                    world->list[i++] = new sphere(center, 0.2, new material(DIELECTRIC, 1.5));
+                }
+            }
+        }
+    }
+
+    world->list[i++] = new sphere(vec3(0, 1, 0), 1.0, new material(DIELECTRIC, 1.5));
+    world->list[i++] = new sphere(vec3(-4, 1, 0), 1.0, new material(LAMBERTIAN, vec3(0.4, 0.2, 0.1)));
+    world->list[i++] = new sphere(vec3(4, 1, 0), 1.0, new material(METAL, vec3(0.7, 0.6, 0.5), 0.0));
+
+    return world;
+}
+
 int main(void) {
     curandState* device_states;
     cudaMalloc(&device_states, NX*NY*NS*sizeof(curandState));
@@ -112,23 +146,20 @@ int main(void) {
 
     size_t BUFFER_SIZE = sizeof(unsigned char)*NX*NY*3;
 
+#ifndef NO_OUTPUT
     printf("P3\n%d %d\n255\n", NX, NY);
+#endif
 
-    sphere_list *world = new sphere_list(5);
-    world->list[0] = new sphere(vec3(0,0,-1), 0.5, new material(LAMBERTIAN, vec3(0.1, 0.2, 0.5)));
-    world->list[1] = new sphere(vec3(0,-100.5,-1), 100, new material(LAMBERTIAN, vec3(0.8, 0.6, 0.2)));
-    world->list[2] = new sphere(vec3(1,0,-1), 0.5, new material(METAL, vec3(0.8, 0.6, 0.2), 0.1));
-    world->list[3] = new sphere(vec3(-1,0,-1), 0.5, new material(DIELECTRIC, 1.5));
-    world->list[4] = new sphere(vec3(-1,0,-1), -0.45, new material(DIELECTRIC, 1.5));
+    sphere_list *world = random_scene();
     
     unsigned char *out = (unsigned char*)malloc(BUFFER_SIZE); // host ouput
     unsigned char *d_out; // device output
     cudaMalloc(&d_out, BUFFER_SIZE);
 
-    vec3 lookfrom(3,3,2);
-    vec3 lookat(0,0,-1);
-    float dist_to_focus = (lookfrom-lookat).length();
-    float aperture = 1.0;
+    vec3 lookfrom(13,2,3);
+    vec3 lookat(0,0,0);
+    float dist_to_focus = 10.0;
+    float aperture = 0.1;
 
     camera *cam = new camera(lookfrom, lookat, vec3(0,1,0), 20, float(NX)/float(NY), aperture, dist_to_focus);
 
@@ -136,14 +167,17 @@ int main(void) {
 
     cudaMemcpy(out, d_out, BUFFER_SIZE, cudaMemcpyDeviceToHost);
 
+#ifndef NO_OUTPUT
     for (int n = 0; n < NX*NY; n++) {
         printf("%d %d %d\n", out[n*3+0], out[n*3+1], out[n*3+2]);
     }
+#endif
 
     cudaFree(d_out);
     free(out);
 
     for (int i = 0; i < world->size; i++) {
+        delete world->list[i]->mat_ptr;
         delete world->list[i];
     }
 

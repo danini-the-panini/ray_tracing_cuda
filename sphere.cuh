@@ -8,13 +8,6 @@
 class sphere : public Managed {
 public:
   __host__ sphere(vec3 center, float radius, material *mat_ptr) : center(center), radius(radius), mat_ptr(mat_ptr) {}
-  __host__ sphere(const sphere &s) {
-    cudaMallocManaged(&mat_ptr, sizeof(material));
-    memcpy(mat_ptr, s.mat_ptr, sizeof(material));
-  }
-  __host__ ~sphere() {
-    if (mat_ptr) delete mat_ptr;
-  }
   __device__ bool hit(const ray &r, float t_min, float t_max, hit_record &rec);
 
   vec3 center;

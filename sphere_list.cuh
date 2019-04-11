@@ -9,11 +9,6 @@ public:
   __host__ sphere_list(int size) : size(size) {
     cudaMallocManaged(&list, sizeof(sphere*) * size);
   }
-  __host__ sphere_list(const sphere_list &l) {
-    size = l.size;
-    cudaMallocManaged(list, sizeof(sphere*) * size);
-    memcpy(list, l.list, sizeof(sphere*) * size);
-  }
   __host__ ~sphere_list() {
     cudaFree(list);
   }
