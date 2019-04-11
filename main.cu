@@ -88,7 +88,7 @@ __global__ void kernel(curandState* global_state, int nx, int ny, sphere_list *w
     float u = (float(i) + curand_uniform(&local_state)) / float(nx);
     float v = (float(j) + curand_uniform(&local_state)) / float(ny);
 
-    ray r = cam.get_ray(u, v);
+    ray r = cam.get_ray(local_state, u, v);
     vec3 col = color(local_state, r, world);
     col/=float(NS);
 
@@ -116,7 +116,6 @@ int main(void) {
 
     sphere_list *world = make_shared_sphere_list(5);
     sphere **list = world->list;
-    float R = cos(PI/4);
     list[0] = make_shared_sphere(vec3(0,0,-1), 0.5, make_shared_lambertian(vec3(0.1, 0.2, 0.5)));
     list[1] = make_shared_sphere(vec3(0,-100.5,-1), 100, make_shared_lambertian(vec3(0.8, 0.6, 0.2)));
     list[2] = make_shared_sphere(vec3(1,0,-1), 0.5, make_shared_metal(vec3(0.8, 0.6, 0.2), 0.1));
@@ -127,7 +126,12 @@ int main(void) {
     unsigned char *d_out; // device output
     cudaMalloc(&d_out, BUFFER_SIZE);
 
-    camera *cam = new camera(vec3(-2,2,1), vec3(0,0,-1), vec3(0,1,0), 30, float(NX)/float(NY));
+    vec3 lookfrom(3,3,2);
+    vec3 lookat(0,0,-1);
+    float dist_to_focus = (lookfrom-lookat).length();
+    float aperture = 1.0;
+
+    camera *cam = new camera(lookfrom, lookat, vec3(0,1,0), 20, float(NX)/float(NY), aperture, dist_to_focus);
 
     kernel<<<NX*NY,NS>>>(device_states, NX, NY, world, *cam, d_out);
 
