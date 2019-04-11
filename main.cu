@@ -37,7 +37,7 @@ __device__ vec3 color(curandState &local_state, const ray &r, sphere_list *world
     vec3 col = vec3(0.0, 0.0, 0.0);
 
     for (int i = 0; i < MAX_DEPTH; i++) {
-        if (hit(world, next_ray, 0.001, FLT_MAX, rec)) {
+        if (world->hit(next_ray, 0.001, FLT_MAX, rec)) {
             if (rec.mat_ptr->scatter(local_state, next_ray, rec, attenuation[i], scattered)) {
                 next_ray = scattered;
                 num_hits++;
@@ -114,13 +114,12 @@ int main(void) {
 
     printf("P3\n%d %d\n255\n", NX, NY);
 
-    sphere_list *world = make_shared_sphere_list(5);
-    sphere **list = world->list;
-    list[0] = new sphere(vec3(0,0,-1), 0.5, new material(LAMBERTIAN, vec3(0.1, 0.2, 0.5)));
-    list[1] = new sphere(vec3(0,-100.5,-1), 100, new material(LAMBERTIAN, vec3(0.8, 0.6, 0.2)));
-    list[2] = new sphere(vec3(1,0,-1), 0.5, new material(METAL, vec3(0.8, 0.6, 0.2), 0.1));
-    list[3] = new sphere(vec3(-1,0,-1), 0.5, new material(DIELECTRIC, 1.5));
-    list[4] = new sphere(vec3(-1,0,-1), -0.45, new material(DIELECTRIC, 1.5));
+    sphere_list *world = new sphere_list(5);
+    world->list[0] = new sphere(vec3(0,0,-1), 0.5, new material(LAMBERTIAN, vec3(0.1, 0.2, 0.5)));
+    world->list[1] = new sphere(vec3(0,-100.5,-1), 100, new material(LAMBERTIAN, vec3(0.8, 0.6, 0.2)));
+    world->list[2] = new sphere(vec3(1,0,-1), 0.5, new material(METAL, vec3(0.8, 0.6, 0.2), 0.1));
+    world->list[3] = new sphere(vec3(-1,0,-1), 0.5, new material(DIELECTRIC, 1.5));
+    world->list[4] = new sphere(vec3(-1,0,-1), -0.45, new material(DIELECTRIC, 1.5));
     
     unsigned char *out = (unsigned char*)malloc(BUFFER_SIZE); // host ouput
     unsigned char *d_out; // device output
@@ -144,7 +143,11 @@ int main(void) {
     cudaFree(d_out);
     free(out);
 
-    clean_up_sphere_list(world);
+    for (int i = 0; i < world->size; i++) {
+        delete world->list[i];
+    }
+
+    delete world;
     delete cam;
 
     return 0;
