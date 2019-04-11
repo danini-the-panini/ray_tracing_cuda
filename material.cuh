@@ -14,6 +14,7 @@
 
 #include "ray.cuh"
 #include "hit_record.cuh"
+#include "managed.cuh"
 
 typedef enum material_type {
     LAMBERTIAN,
@@ -21,48 +22,30 @@ typedef enum material_type {
     DIELECTRIC
 } material_type;
 
-typedef struct material {
+class material : public Managed {
+public:
+    __device__  __host__ material(material_type type, vec3 albedo, float param) : type(type), albedo(albedo), param(param) {}
+    __device__  __host__ material(material_type type, vec3 albedo) : type(type), albedo(albedo), param(0.0) {}
+    __device__  __host__ material(material_type type, float param) : type(type), albedo(vec3(1,1,1)), param(param) {}
+    __device__  __host__ material(const material& m) {
+        type = m.type;
+        albedo = m.albedo;
+        param = m.param;
+    }
+
+    __device__ bool scatter_lambertian(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered);
+    __device__ bool scatter_metal(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered);
+    __device__ bool scatter_dielectric(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered);
+    __device__ bool scatter(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered);
+    
     material_type type;
     vec3 albedo;
     union {
+        float param;
         float fuzz;
         float ref_idx;
     };
-} material;
-
-__host__ material *make_shared_material() {
-    material *m;
-    cudaMallocManaged(&m, sizeof(material));
-    return m;
-}
-
-__host__ material *make_shared_lambertian(const vec3 &albedo) {
-    material *m = make_shared_material();
-
-    m->type = LAMBERTIAN;
-    m->albedo = albedo;
-
-    return m;
-}
-
-__host__ material *make_shared_metal(const vec3 &albedo, float fuzz) {
-    material *m = make_shared_material();
-
-    m->type = METAL;
-    m->albedo = albedo;
-    m->fuzz = fuzz > 1 ? 1 : fuzz;
-
-    return m;
-}
-
-__host__ material *make_shared_dielectric(float ref_idx) {
-    material *m = make_shared_material();
-
-    m->type = DIELECTRIC;
-    m->ref_idx = ref_idx;
-
-    return m;
-}
+};
 
 __device__ float schlick(float cosine, float ref_idx) {
     float r0 = (1-ref_idx) / (1+ref_idx);
@@ -96,21 +79,21 @@ __device__ vec3 random_in_unit_sphere(curandState &local_state) {
 }
 
 
-__device__ bool scatter_lambertian(curandState &local_state, const material *m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
+__device__ bool material::scatter_lambertian(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
     vec3 target = rec.p + rec.normal + random_in_unit_sphere(local_state);
     scattered = ray(rec.p, target-rec.p);
-    attenuation = m->albedo;
+    attenuation = albedo;
     return true;
 }
 
-__device__ bool scatter_metal(curandState &local_state, const material *m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
+__device__ bool material::scatter_metal(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
     vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
-    scattered = ray(rec.p, reflected + m->fuzz*random_in_unit_sphere(local_state));
-    attenuation = m->albedo;
+    scattered = ray(rec.p, reflected + fuzz*random_in_unit_sphere(local_state));
+    attenuation = albedo;
     return (dot(scattered.direction(), rec.normal) > 0);
 }
 
-__device__ bool scatter_dielectric(curandState &local_state, const material *m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
+__device__ bool material::scatter_dielectric(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
     vec3 outward_normal;
     vec3 reflected = reflect(r_in.direction(), rec.normal);
     float ni_over_nt;
@@ -120,17 +103,17 @@ __device__ bool scatter_dielectric(curandState &local_state, const material *m, 
     float cosine;
     if (dot(r_in.direction(), rec.normal) > 0) {
          outward_normal = -rec.normal;
-         ni_over_nt = m->ref_idx;
+         ni_over_nt = ref_idx;
          cosine = dot(r_in.direction(), rec.normal) / r_in.direction().length();
-         cosine = sqrt(1 - m->ref_idx*m->ref_idx*(1-cosine*cosine));
+         cosine = sqrt(1 - ref_idx*ref_idx*(1-cosine*cosine));
     }
     else {
          outward_normal = rec.normal;
-         ni_over_nt = 1.0 / m->ref_idx;
+         ni_over_nt = 1.0 / ref_idx;
          cosine = -dot(r_in.direction(), rec.normal) / r_in.direction().length();
     }
     if (refract(r_in.direction(), outward_normal, ni_over_nt, refracted)) 
-       reflect_prob = schlick(cosine, m->ref_idx);
+       reflect_prob = schlick(cosine, ref_idx);
     else 
        reflect_prob = 1.0;
     if (curand_uniform(&local_state) < reflect_prob) 
@@ -140,15 +123,15 @@ __device__ bool scatter_dielectric(curandState &local_state, const material *m, 
     return true;
 }
 
-__device__ bool scatter(curandState &local_state, const material *m, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
-    switch (m->type) {
+__device__ bool material::scatter(curandState &local_state, const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) {
+    switch (type) {
     default:
     case LAMBERTIAN:
-        return scatter_lambertian(local_state, m, r_in, rec, attenuation, scattered);
+        return scatter_lambertian(local_state, r_in, rec, attenuation, scattered);
     case METAL:
-        return scatter_metal(local_state, m, r_in, rec, attenuation, scattered);
+        return scatter_metal(local_state, r_in, rec, attenuation, scattered);
     case DIELECTRIC:
-        return scatter_dielectric(local_state, m, r_in, rec, attenuation, scattered);
+        return scatter_dielectric(local_state, r_in, rec, attenuation, scattered);
     }
 }
 
